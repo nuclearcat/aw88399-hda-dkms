@@ -2879,7 +2879,13 @@ static const struct component_master_ops comp_master_ops = {
 static void comp_generic_playback_hook(struct hda_pcm_stream *hinfo, struct hda_codec *cdc,
 				       struct snd_pcm_substream *sub, int action)
 {
-	struct alc_spec *spec = cdc->spec;
+	struct alc_spec *spec;
+
+	/* A missing codec must never turn an optional speaker fixup into a boot Oops. */
+	if (WARN_ON_ONCE(!cdc))
+		return;
+
+	spec = cdc->spec;
 
 	hda_component_manager_playback_hook(&spec->comps, action);
 }
@@ -2977,6 +2983,16 @@ static void aw88399_fixup_i2c_two(struct hda_codec *cdc, const struct hda_fixup 
 static void alc287_fixup_legion_16iax_aw88399(struct hda_codec *codec,
 				const struct hda_fixup *fix, int action)
 {
+	/*
+	 * Pin 0x17 defaults to DAC 0x06 on these machines, but that DAC has no
+	 * output amplifier and therefore cannot follow Speaker Playback Volume.
+	 * Route both speaker pins through DAC 0x02 so the desktop volume control
+	 * attenuates the complete internal-speaker path, including the AW88399s.
+	 */
+	static const hda_nid_t conn[] = { 0x02 };
+
+	if (action == HDA_FIXUP_ACT_PRE_PROBE)
+		snd_hda_override_conn_list(codec, 0x17, ARRAY_SIZE(conn), conn);
 }
 
 static void cs35l41_fixup_i2c_two(struct hda_codec *cdc, const struct hda_fixup *fix, int action)

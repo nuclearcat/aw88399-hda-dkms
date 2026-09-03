@@ -4,7 +4,7 @@
 set -e
 
 PKGNAME="aw88399-hda-dkms"
-VERSION="${1:-1.0}"
+VERSION="${1:-1.0.1}"
 ARCH="all"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$(mktemp -d)"
@@ -125,20 +125,20 @@ DKMS_VERSION="#VERSION#"
 # Register and build DKMS module
 if [ -x /usr/sbin/dkms ]; then
     dkms add -m "$DKMS_NAME" -v "$DKMS_VERSION" 2>/dev/null || true
-    dkms build -m "$DKMS_NAME" -v "$DKMS_VERSION" || true
-    dkms install -m "$DKMS_NAME" -v "$DKMS_VERSION" --force || true
+    dkms build -m "$DKMS_NAME" -v "$DKMS_VERSION" --force
+    dkms install -m "$DKMS_NAME" -v "$DKMS_VERSION" --force
 fi
 
 # Update grub if available
 if command -v update-grub &>/dev/null; then
-    update-grub 2>/dev/null || true
+    update-grub
 fi
 
 # Update initramfs for all installed kernels
 if command -v update-initramfs &>/dev/null; then
-    update-initramfs -u -k all 2>/dev/null || true
+    update-initramfs -u -k all
 elif command -v dracut &>/dev/null; then
-    dracut --force 2>/dev/null || true
+    dracut --force
 fi
 
 echo ""

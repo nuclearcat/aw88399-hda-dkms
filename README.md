@@ -14,7 +14,7 @@ DKMS-based speaker driver for Lenovo Legion laptops using **Awinic AW88399** sma
 
 ```bash
 # From .deb package:
-sudo dpkg -i aw88399-hda-dkms_1.0_all.deb
+sudo dpkg -i aw88399-hda-dkms_1.0.1_all.deb
 sudo reboot
 
 # Or from source:
