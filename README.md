@@ -6,15 +6,78 @@ DKMS-based speaker driver for Lenovo Legion laptops using **Awinic AW88399** sma
 
 | Model | Product ID | Subsystem ID |
 |-------|-----------|-------------|
-| Lenovo Legion Pro 7 16IAX10H (Intel) | 83F5 | 17aa:3906 |
+| Lenovo Legion Pro 7 16IAX10H / Legion Y9000P IAX10H (Intel) | 83F5 | 17aa:3906 |
 | Lenovo Legion Y9000P IAX10H | 83F4 | 17aa:3907 |
 | Lenovo Legion Pro 7 16AFR10H (AMD) | 83RU | 17aa:3938 |
 
-## Quick Install
+Model names vary by region. The inspected Y9000P IAX10H reports product ID
+`83F5` and **codec** subsystem ID `17aa:3906`; its PCI audio controller reports
+`17aa:3d6c`, which is a different identifier.
+
+## Compatibility with the installed system (2026-09-11)
+
+Checked on Ubuntu **26.04.1 LTS**, kernel **7.0.0-31-generic**, Lenovo
+**83F5 / Legion Y9000P IAX10H**, Realtek **ALC287**, with PipeWire **1.6.2**
+and WirePlumber **0.5.13**:
+
+- **Keep this DKMS package on this kernel.** The stock kernel has the ASoC
+  AW88399 driver, but lacks the AW88399 HDA side-codec integration. At boot,
+  `aw88399-setup` still replaces the single ACPI client with the two amplifier
+  clients required by this machine.
+- DKMS **1.0.2** is installed for the running kernel
+  (`7.0.0-31-generic`). The previous **1.0.1** remains installed for
+  `7.0.0-30-generic` and in the `built` state for `7.0.0-31-generic`, as
+  expected after the current-kernel-only upgrade described below. All six
+  loaded modules have source versions matching their installed counterparts,
+  and their installed `vermagic` matches the running kernel. The installed
+  DKMS source matches this checkout's driver source. Both amplifiers bind to
+  ALC287, with channels 1 and 0 respectively. SOF mode is `3`, and the
+  installed firmware matches the repository copy.
+- No kernel API/loading incompatibility was found in these checks. The boot
+  message `Could not get reset GPIO: -2 (non-fatal)` is followed by successful
+  registration and binding of both amplifiers; it does not by itself mean the
+  driver failed.
+
+These observations establish module loading and component binding, not a
+complete audio test. Audible playback, recording, and suspend/resume were not
+tested. Recheck compatibility after future kernel updates; do not infer it
+from the presence of `snd-soc-aw88399` alone.
+
+Upstream now has [AW88399 HDA configuration options](https://github.com/torvalds/linux/blob/master/sound/hda/codecs/side-codecs/Kconfig),
+but the inspected Ubuntu kernel configuration lacks both
+`CONFIG_SND_HDA_SCODEC_AW88399` and `CONFIG_SND_HDA_SCODEC_AW88399_I2C`.
+Upstream support therefore does not make this package redundant on the
+currently installed kernel.
+
+### Desktop audio configuration
+
+The previous WirePlumber rule used `pci-*`, which did not match the inspected
+node `alsa_output.pci-0000_80_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink`.
+Consequently, its intended `api.alsa.period-size = 2048` and
+`api.alsa.headroom = 8192` overrides were absent from the live node.
+Both installation scripts now use
+`~alsa_output[.]pci-.*-platform-skl_hda_dsp_generic[.].*`.
+WirePlumber's [ALSA rules](https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/alsa.html)
+use regular-expression matching after `~`, so a variable PCI address needs
+`.*`. Editing this checkout does not update the already installed configuration.
+Applying this configuration correction does not require rebuilding the kernel
+modules.
+
+The `ucm2/` files are legacy configuration snapshots; neither installation
+script deploys them. The inspected system uses the newer distribution HDA UCM
+files, without the snapshots' `83F5` microphone override. Its live input route
+is labelled `Stereo Microphone` and tied to the external microphone jack;
+internal-microphone routing remains unverified. Do not assume that installing
+this speaker driver also installs an internal-microphone fix.
+
+## Quick Install (new installations)
+
+For an existing 1.0.1 installation where other kernels must remain untouched,
+use the current-kernel upgrade procedure below instead.
 
 ```bash
 # From .deb package:
-sudo dpkg -i aw88399-hda-dkms_1.0.1_all.deb
+sudo dpkg -i aw88399-hda-dkms_1.0.2_all.deb
 sudo reboot
 
 # Or from source:
@@ -23,11 +86,106 @@ sudo ./install.sh
 sudo reboot
 ```
 
+The `.deb` path installs the GRUB drop-in and runs `update-grub`. The source
+installer installs modules, firmware, modprobe configuration, WirePlumber
+configuration, and the initramfs update, but does **not** modify GRUB. For a
+source install, add `snd_intel_dspcfg.dsp_driver=3` to `/etc/default/grub` (or
+create the drop-in described in [Boot Parameter](#boot-parameter)) and run
+`sudo update-grub` before rebooting. When building for a non-running kernel,
+pass the same release to both commands, for example:
+
+```bash
+make KVER=7.0.0-31-generic
+sudo ./install.sh 7.0.0-31-generic
+```
+
+## Upgrading only the current kernel from 1.0.1 to 1.0.2
+
+Version **1.0.2** contains the corrected WirePlumber node-matching rule and
+updated compatibility documentation. The kernel driver C code and amplifier
+firmware are unchanged from 1.0.1.
+
+The release package's extracted source was built successfully for both
+`7.0.0-31-generic` and `7.0.0-30-generic` (all six modules, including MODPOST).
+Package contents, maintainer-script syntax, and the WirePlumber configuration
+were checked. BTF debug information was skipped because `vmlinux` was not
+available; the modules themselves built successfully. The 1.0.2 modules are
+installed and component binding is verified on the running system; audible
+playback, recording, and suspend/resume remain untested.
+
+The installed 1.0.1 package's `prerm` removes its DKMS modules from **all**
+kernels. Running `dpkg -i` on the new package would invoke that old script.
+To preserve every other kernel, extract the new package without running its
+maintainer scripts and install its DKMS source for `uname -r` explicitly.
+
+Run the following from this checkout. The subshell stops on errors and removes
+its temporary extraction directory automatically. It refuses to overwrite an
+existing 1.0.2 source directory; if that directory already exists, inspect the
+previous attempt before continuing.
+
+```bash
+(
+    set -e
+    aw88399_kernel="$(uname -r)"
+    aw88399_stage="$(mktemp -d)"
+    trap 'rm -rf -- "$aw88399_stage"' EXIT
+
+    test ! -e /usr/src/aw88399-hda-dkms-1.0.2
+    dpkg-deb --extract ./aw88399-hda-dkms_1.0.2_all.deb "$aw88399_stage"
+    sudo cp -a "$aw88399_stage/usr/src/aw88399-hda-dkms-1.0.2" /usr/src/
+    sudo dkms add -m aw88399-hda-dkms -v 1.0.2
+    sudo dkms build -m aw88399-hda-dkms -v 1.0.2 -k "$aw88399_kernel"
+    sudo dkms install -m aw88399-hda-dkms -v 1.0.2 -k "$aw88399_kernel" --force
+    sudo install -m 0644 \
+        "$aw88399_stage/usr/share/wireplumber/wireplumber.conf.d/50-aw88399-sof-fix.conf" \
+        /usr/share/wireplumber/wireplumber.conf.d/50-aw88399-sof-fix.conf
+    sudo update-initramfs -u -k "$aw88399_kernel"
+)
+dkms status -m aw88399-hda-dkms
+```
+
+On the inspected machine, expect **1.0.2** to be `installed` for
+`7.0.0-31-generic`, with **1.0.1** still `installed` for `7.0.0-30-generic`.
+The old version may also remain in the `built` state for the current kernel.
+Only the current kernel's modules and initramfs are updated; the existing
+firmware and GRUB settings are reused. WirePlumber configuration is shared by
+the system, so its corrected buffering rule applies regardless of boot kernel.
+
+This is a manual DKMS upgrade: the Debian package database still reports
+**1.0.1**, while `dkms status` reports the actual module version for each
+kernel. The new source keeps `AUTOINSTALL=yes` for future kernel installations;
+this procedure does not run autoinstall on any other existing kernel.
+
+Once installation succeeds and the expected DKMS status is confirmed, reboot
+to load the current kernel's new installation and WirePlumber configuration:
+
+```bash
+sudo reboot
+```
+
+After reboot, select the internal speakers as the output device in the desktop
+sound settings, then verify amplifier binding and the buffering rule:
+
+```bash
+dkms status -m aw88399-hda-dkms
+journalctl -k -b --no-pager | grep -E 'AW88399 HDA side codec|Bound to HDA codec'
+wpctl inspect @DEFAULT_AUDIO_SINK@ \
+  | grep -E 'api.alsa.(period-size|headroom)'
+```
+
+The buffering properties should be `2048` and `8192`, respectively. These
+kernel releases are specific to the inspected machine; use the actual kernel
+releases on other systems.
+
 ## What This Does
 
-These laptops have speakers wired through **Awinic AW88399** smart amplifiers connected via I2C. The HDA codec (Realtek ALC287) handles headphones and mic directly, but the speakers need the AW88399 amps to be initialized with firmware and controlled via I2C. Linux has no upstream support for this configuration, resulting in barely audible speakers.
+These laptops have speakers wired through **Awinic AW88399** smart amplifiers connected via I2C. The HDA codec (Realtek ALC287) handles headphones and mic directly, but the speakers need the AW88399 amps to be initialized with firmware and controlled via I2C. The stock kernel checked above lacks this HDA integration, resulting in barely audible speakers without the fix.
 
-This package builds 6 kernel modules via DKMS and installs firmware + boot configuration:
+This package builds 6 kernel modules via DKMS. The `.deb` package installs the
+firmware, module-loading configuration, GRUB setting, and WirePlumber rule;
+the source installer installs the firmware, module-loading configuration,
+WirePlumber rule, and initramfs update, but leaves GRUB configuration to the
+user.
 
 ### Modules
 
@@ -42,11 +200,12 @@ This package builds 6 kernel modules via DKMS and installs firmware + boot confi
 
 ### Additional Files
 
-| File | Location | Purpose |
-|------|----------|---------|
-| `aw88399_acf.bin` | `/lib/firmware/` | AW88399 DSP firmware (from Windows driver) |
-| `aw88399-hda.conf` | `/etc/modprobe.d/` | Module loading order (softdeps) |
-| `99-aw88399-hda.cfg` | `/etc/default/grub.d/` | Sets `snd_intel_dspcfg.dsp_driver=3` boot parameter |
+| File | Location | Installed by | Purpose |
+|------|----------|--------------|---------|
+| `aw88399_acf.bin` | `/lib/firmware/` | `.deb` / `install.sh` | AW88399 DSP firmware (from Windows driver) |
+| `aw88399-hda.conf` | `/etc/modprobe.d/` | `.deb` / `install.sh` | Module loading order (softdeps) |
+| `99-aw88399-hda.cfg` | `/etc/default/grub.d/` | `.deb` only | Sets `snd_intel_dspcfg.dsp_driver=3` boot parameter |
+| `50-aw88399-sof-fix.conf` | `/usr/share/wireplumber/wireplumber.conf.d/` | `.deb` / `install.sh` when WirePlumber is present | Sets SOF output buffering through WirePlumber ALSA rules |
 
 ## How It Works
 
@@ -164,15 +323,16 @@ From this point on, `snd-hda-scodec-aw88399-i2c` binds to the two clients and th
 
 ```bash
 # Check if modules loaded and amps bound
-sudo dmesg | grep -i aw88399
+sudo journalctl -k -b --no-pager | grep -i aw88399
 
-# Expected output:
-#   aw88399_setup: Hardware reset complete via GPIO
+# A successful setup includes these messages. A missing reset GPIO is
+# non-fatal when the later client creation and binding messages are present.
+#   aw88399_setup: Could not get reset GPIO: -2 (non-fatal)
 #   aw88399_setup: _DSM calibration data: 01 f4 0b 2c 10 48 0d f8 11
 #   aw88399-hda ...: AW88399 HDA side codec registered successfully
 #   aw88399-hda ...: Bound to HDA codec, channel 0
 #   aw88399-hda ...: Bound to HDA codec, channel 1
-#   aw88399-hda ...: start success
+#   aw88399-hda ...: start success  # appears during playback
 
 # Check DSP driver mode
 cat /sys/module/snd_intel_dspcfg/parameters/dsp_driver
@@ -183,14 +343,25 @@ lsmod | grep aw88
 
 # Check sound card
 aplay -l | grep ALC287
+
+# Check the SOF speaker buffering rule after selecting internal speakers
+wpctl inspect @DEFAULT_AUDIO_SINK@ \
+  | grep -E 'api.alsa.(period-size|headroom)'
+# Should include: period-size = 2048 and headroom = 8192
 ```
 
 ## Building the .deb Package
 
 ```bash
-./make_deb.sh 1.0
-# Output: aw88399-hda-dkms_1.0_all.deb
+./make_deb.sh
+# Output: aw88399-hda-dkms_1.0.2_all.deb
 ```
+
+`make_deb.sh` accepts an optional version argument, for example
+`./make_deb.sh 1.0.3`; omitting it defaults to `1.0.2`.
+
+This is a DKMS **source** package: installation compiles modules for the target
+kernel. Creating the `.deb` does not install or reload anything on the host.
 
 ## Links
 

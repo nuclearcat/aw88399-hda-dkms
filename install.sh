@@ -1,6 +1,6 @@
 #!/bin/bash
 # AW88399 HDA DKMS Install Script
-# Installs patched kernel modules, firmware, and UCM2 config for
+# Installs patched kernel modules, firmware, and WirePlumber config for
 # Lenovo Legion laptops with Awinic AW88399 smart amplifiers
 set -e
 
@@ -104,7 +104,8 @@ monitor.alsa.rules = [
   {
     matches = [
       {
-        node.name = "~alsa_output.pci-*-platform-skl_hda_dsp_generic.*"
+        # WirePlumber uses a regular expression after '~', not a shell glob.
+        node.name = "~alsa_output[.]pci-.*-platform-skl_hda_dsp_generic[.].*"
       }
     ]
     actions = {

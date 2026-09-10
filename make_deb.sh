@@ -4,7 +4,7 @@
 set -e
 
 PKGNAME="aw88399-hda-dkms"
-VERSION="${1:-1.0.1}"
+VERSION="${1:-1.0.2}"
 ARCH="all"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$(mktemp -d)"
@@ -68,7 +68,8 @@ monitor.alsa.rules = [
   {
     matches = [
       {
-        node.name = "~alsa_output.pci-*-platform-skl_hda_dsp_generic.*"
+        # WirePlumber uses a regular expression after '~', not a shell glob.
+        node.name = "~alsa_output[.]pci-.*-platform-skl_hda_dsp_generic[.].*"
       }
     ]
     actions = {
