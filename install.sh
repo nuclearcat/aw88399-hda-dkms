@@ -1,6 +1,6 @@
 #!/bin/bash
 # AW88399 HDA DKMS Install Script
-# Installs patched kernel modules, firmware, and UCM2 config for
+# Installs patched kernel modules, firmware, and WirePlumber config for
 # Lenovo Legion laptops with Awinic AW88399 smart amplifiers
 set -e
 
@@ -15,6 +15,45 @@ echo ""
 # Check for root
 if [ "$EUID" -ne 0 ]; then
     echo "Please run as root: sudo $0"
+    exit 1
+fi
+
+if [ ! -d "$MOD_DIR" ]; then
+    echo "Kernel module directory not found: $MOD_DIR"
+    exit 1
+fi
+
+MODULES=(
+    "$SCRIPT_DIR/snd-hda-codec-alc269.ko"
+    "$SCRIPT_DIR/snd-soc-aw88399.ko"
+    "$SCRIPT_DIR/snd-hda-scodec-aw88399.ko"
+    "$SCRIPT_DIR/snd-hda-scodec-aw88399-i2c.ko"
+    "$SCRIPT_DIR/serial-multi-instantiate.ko"
+    "$SCRIPT_DIR/aw88399-setup.ko"
+)
+
+# Validate the complete module set before changing the running system.
+for ko in "${MODULES[@]}"; do
+    if [ ! -f "$ko" ]; then
+        echo "ERROR: $(basename "$ko") not found - run 'make' first"
+        exit 1
+    fi
+
+    VERMAGIC="$(modinfo -F vermagic "$ko")"
+    case "$VERMAGIC" in
+        "$KVER "*) ;;
+        *)
+            echo "ERROR: $(basename "$ko") was not built for $KVER"
+            echo "Found vermagic: $VERMAGIC"
+            echo "Rebuild first with: make clean && make KVER=$KVER"
+            exit 1
+            ;;
+    esac
+done
+
+if ! modinfo -F firmware "$SCRIPT_DIR/snd-soc-aw88399.ko" | grep -Fxq aw88399_acf.bin; then
+    echo "ERROR: snd-soc-aw88399.ko does not declare aw88399_acf.bin"
+    echo "Refusing to create an initramfs that cannot initialize the amplifiers"
     exit 1
 fi
 
@@ -34,20 +73,9 @@ echo "[2/5] Installing kernel modules..."
 DEST="$MOD_DIR/updates/dkms"
 mkdir -p "$DEST"
 
-for ko in \
-    "$SCRIPT_DIR/realtek/snd-hda-codec-alc269.ko" \
-    "$SCRIPT_DIR/soc-codecs/snd-soc-aw88399.ko" \
-    "$SCRIPT_DIR/side-codecs/snd-hda-scodec-aw88399.ko" \
-    "$SCRIPT_DIR/side-codecs/snd-hda-scodec-aw88399-i2c.ko" \
-    "$SCRIPT_DIR/serial-multi-instantiate.ko" \
-    "$SCRIPT_DIR/aw88399-setup.ko"
-do
-    if [ -f "$ko" ]; then
-        cp "$ko" "$DEST/"
-        echo "  Installed $(basename "$ko")"
-    else
-        echo "  WARNING: $(basename "$ko") not found - run 'make' first"
-    fi
+for ko in "${MODULES[@]}"; do
+    cp "$ko" "$DEST/"
+    echo "  Installed $(basename "$ko")"
 done
 
 depmod -a "$KVER"
@@ -76,7 +104,8 @@ monitor.alsa.rules = [
   {
     matches = [
       {
-        node.name = "~alsa_output.pci-*-platform-skl_hda_dsp_generic.*"
+        # WirePlumber uses a regular expression after '~', not a shell glob.
+        node.name = "~alsa_output[.]pci-.*-platform-skl_hda_dsp_generic[.].*"
       }
     ]
     actions = {

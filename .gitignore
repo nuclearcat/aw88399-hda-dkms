@@ -27,3 +27,6 @@ Module.symvers
 # OS
 .DS_Store
 Thumbs.db
+
+#ChatGPT
+AGENTS.md

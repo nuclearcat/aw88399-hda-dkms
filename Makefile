@@ -15,18 +15,18 @@ KDIR ?= /lib/modules/$(KVER)/build
 PWD := $(shell pwd)
 
 # Module definitions
-obj-m += realtek/snd-hda-codec-alc269.o
-obj-m += soc-codecs/snd-soc-aw88399.o
-obj-m += side-codecs/snd-hda-scodec-aw88399.o
-obj-m += side-codecs/snd-hda-scodec-aw88399-i2c.o
+obj-m += snd-hda-codec-alc269.o
+obj-m += snd-soc-aw88399.o
+obj-m += snd-hda-scodec-aw88399.o
+obj-m += snd-hda-scodec-aw88399-i2c.o
 obj-m += serial-multi-instantiate.o
 obj-m += aw88399-setup.o
 
 # Object file mappings
-realtek/snd-hda-codec-alc269-y := realtek/alc269.o
-soc-codecs/snd-soc-aw88399-y := soc-codecs/aw88399.o
-side-codecs/snd-hda-scodec-aw88399-y := side-codecs/aw88399_hda.o
-side-codecs/snd-hda-scodec-aw88399-i2c-y := side-codecs/aw88399_hda_i2c.o
+snd-hda-codec-alc269-y := realtek/alc269.o
+snd-soc-aw88399-y := soc-codecs/aw88399.o
+snd-hda-scodec-aw88399-y := side-codecs/aw88399_hda.o
+snd-hda-scodec-aw88399-i2c-y := side-codecs/aw88399_hda_i2c.o
 aw88399-setup-y := aw88399_setup.o
 
 # Include paths - we ship local copies of headers not in kernel-headers pkg
